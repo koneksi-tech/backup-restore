@@ -92,9 +92,10 @@ The configuration file (`~/.koneksi-backup/config.yaml`) supports the following 
 
 ```yaml
 api:
-  base_url: "https://api.koneksi.io"
+  base_url: "https://koneksi-tyk-gateway-3rvca.ondigitalocean.app"
   client_id: "your-client-id"
   client_secret: "your-client-secret"
+  directory_id: "your-directory-id"
   timeout: 30
   retry_count: 3
 
@@ -220,7 +221,20 @@ The CLI requires valid Koneksi API credentials. You can obtain these from:
 1. Create an account on the Koneksi platform
 2. Navigate to the API Keys page
 3. Generate a new API key with appropriate permissions
-4. Add the credentials to your config file
+4. Add the credentials to your config file or use environment variables
+
+### Using Environment Variables
+
+You can also configure credentials using environment variables:
+
+```bash
+export KONEKSI_API_CLIENT_ID="your-client-id"
+export KONEKSI_API_CLIENT_SECRET="your-client-secret"
+export KONEKSI_API_DIRECTORY_ID="your-directory-id"
+
+# Run backup
+koneksi-backup backup /path/to/file.txt
+```
 
 ## Monitoring and Reports
 
