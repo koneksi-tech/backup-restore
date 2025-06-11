@@ -1,0 +1,71 @@
+name: Build with Go 1.24
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    name: Build with Go 1.24
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Try to set up Go 1.24
+        id: setup-go-124
+        continue-on-error: true
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          check-latest: true
+
+      - name: Set up Go (fallback to latest)
+        if: steps.setup-go-124.outcome == 'failure'
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          check-latest: true
+
+      - name: Display Go version
+        run: go version
+
+      - name: Clean workspace
+        run: |
+          rm -f test-directory.go test-api.go || true
+          rm -f go.work go.work.sum || true
+
+      - name: Install dependencies
+        run: |
+          export GOWORK=off
+          go mod download
+          go mod tidy
+
+      - name: Build binary
+        run: |
+          export GOWORK=off
+          go build -mod=mod -o koneksi-backup ./cmd/koneksi-backup
+
+      - name: Test binary
+        run: |
+          ./koneksi-backup help
+          
+      - name: Build all platforms
+        run: |
+          export GOWORK=off
+          make clean
+          make build-all
+
+      - name: List built binaries
+        run: ls -la dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: binaries-go124
+          path: dist/*

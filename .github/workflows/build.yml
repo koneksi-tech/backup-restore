@@ -9,7 +9,7 @@ on:
     branches: [ main, master ]
 
 env:
-  GO_VERSION: '1.21'
+  GO_VERSION: '1.24'
 
 jobs:
   test:
@@ -23,6 +23,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          check-latest: true
 
       - name: Cache Go modules
         uses: actions/cache@v3
@@ -35,11 +36,14 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Clean up test files
+        run: rm -f test-directory.go test-api.go || true
+
       - name: Run tests
-        run: go test -v ./...
+        run: GOWORK=off go test -v -mod=mod ./...
 
       - name: Run vet
-        run: go vet ./...
+        run: GOWORK=off go vet ./...
 
   build:
     name: Build
@@ -82,7 +86,6 @@ jobs:
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
-          CGO_ENABLED: 1
         run: |
           # For Windows, add .exe extension
           if [ "${{ matrix.os }}" = "windows" ]; then
@@ -93,10 +96,13 @@ jobs:
           
           # Build with SQLite support
           if [ "${{ matrix.os }}" = "linux" ]; then
+            # Install build dependencies for static linking
+            sudo apt-get update && sudo apt-get install -y gcc-multilib g++-multilib
             # Use static linking for Linux to include SQLite
-            go build -ldflags="-s -w -linkmode external -extldflags '-static'" -o ${OUTPUT} ./cmd/koneksi-backup
+            CGO_ENABLED=1 GOWORK=off go build -mod=mod -ldflags="-s -w -linkmode external -extldflags '-static'" -o ${OUTPUT} ./cmd/koneksi-backup
           else
-            go build -ldflags="-s -w" -o ${OUTPUT} ./cmd/koneksi-backup
+            # Disable CGO for cross-compilation on non-Linux platforms
+            CGO_ENABLED=0 GOWORK=off go build -mod=mod -ldflags="-s -w" -o ${OUTPUT} ./cmd/koneksi-backup
           fi
 
       - name: Compress binary
