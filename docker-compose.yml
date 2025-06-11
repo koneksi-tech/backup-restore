@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  koneksi-backup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: koneksi-backup:latest
+    container_name: koneksi-backup
+    restart: unless-stopped
+    environment:
+      # API Credentials - set these in .env file
+      - KONEKSI_API_CLIENT_ID=${KONEKSI_API_CLIENT_ID}
+      - KONEKSI_API_CLIENT_SECRET=${KONEKSI_API_CLIENT_SECRET}
+      - KONEKSI_API_DIRECTORY_ID=${KONEKSI_API_DIRECTORY_ID}
+    volumes:
+      # Persistent storage for database and reports
+      - ./data:/app/data
+      - ./reports:/app/reports
+      # Mount directories to backup
+      - ${BACKUP_SOURCE_1:-./backup-source}:/backup/source1:ro
+      - ${BACKUP_SOURCE_2:-./backup-source2}:/backup/source2:ro
+    command: ["run", "-c", "/app/data/config.yaml"]
+    
+  # Optional: Run a one-time backup
+  koneksi-backup-once:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: koneksi-backup:latest
+    container_name: koneksi-backup-once
+    profiles:
+      - backup
+    environment:
+      - KONEKSI_API_CLIENT_ID=${KONEKSI_API_CLIENT_ID}
+      - KONEKSI_API_CLIENT_SECRET=${KONEKSI_API_CLIENT_SECRET}
+      - KONEKSI_API_DIRECTORY_ID=${KONEKSI_API_DIRECTORY_ID}
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ${BACKUP_TARGET}:/backup/target:ro
+    command: ["backup", "/backup/target"]
+
+  # Optional: Restore from manifest
+  koneksi-restore:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: koneksi-backup:latest
+    container_name: koneksi-restore
+    profiles:
+      - restore
+    environment:
+      - KONEKSI_API_CLIENT_ID=${KONEKSI_API_CLIENT_ID}
+      - KONEKSI_API_CLIENT_SECRET=${KONEKSI_API_CLIENT_SECRET}
+      - KONEKSI_API_DIRECTORY_ID=${KONEKSI_API_DIRECTORY_ID}
+    volumes:
+      - ./data:/app/data
+      - ./restore:/restore
+      - ${MANIFEST_FILE}:/app/manifest.json:ro
+    command: ["restore", "/app/manifest.json", "/restore"]

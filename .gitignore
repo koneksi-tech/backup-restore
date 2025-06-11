@@ -1,0 +1,46 @@
+# Binaries
+koneksi-backup
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+test-backup-dir/
+test-restore/
+test-*.go
+*.test
+
+# Backup and restore files
+backup.db
+restore-manifest.json
+*.manifest.json
+
+# Reports
+reports/
+
+# Go build artifacts
+vendor/
+*.mod.sum
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp

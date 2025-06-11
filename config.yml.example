@@ -1,0 +1,123 @@
+# Koneksi Backup CLI Configuration
+# Copy this file to config.yml and update with your settings
+
+# API Configuration
+api:
+  # Your Koneksi API credentials
+  client_id: "your_client_id_here"
+  client_secret: "your_client_secret_here"
+  
+  # Your directory ID for storing backups
+  directory_id: "your_directory_id_here"
+  
+  # API endpoint (optional, defaults to https://koneksi-tyk-gateway-3rvca.ondigitalocean.app)
+  # url: "https://koneksi-tyk-gateway-3rvca.ondigitalocean.app"
+  
+  # Request timeout in seconds (optional, defaults to 30)
+  # timeout: 30
+
+# Backup Configuration
+backup:
+  # Directories to monitor and backup
+  directories:
+    - /path/to/first/directory
+    - /path/to/second/directory
+    # Add more directories as needed
+  
+  # File patterns to exclude from backup (glob patterns)
+  exclude:
+    - "*.tmp"
+    - "*.log"
+    - ".git/**"
+    - "node_modules/**"
+    - "__pycache__/**"
+    - "*.pyc"
+    - ".DS_Store"
+    - "Thumbs.db"
+  
+  # Enable compression (optional, defaults to false)
+  compression: true
+  
+  # Compression type: "gzip" or "zlib" (optional, defaults to "gzip")
+  compression_type: "gzip"
+  
+  # Maximum file size in MB to backup (optional, defaults to 100)
+  max_file_size: 100
+  
+  # Number of concurrent workers (optional, defaults to 3)
+  workers: 3
+  
+  # Scan interval in seconds (optional, defaults to 60)
+  scan_interval: 60
+
+# Database Configuration
+database:
+  # Path to SQLite database file (optional, defaults to ./backup.db)
+  path: "./backup.db"
+
+# Report Configuration
+report:
+  # Directory to store backup reports (optional, defaults to ./reports)
+  directory: "./reports"
+  
+  # Report format: "json" or "html" (optional, defaults to "json")
+  format: "json"
+  
+  # Keep reports for N days (optional, defaults to 30)
+  retention_days: 30
+
+# Logging Configuration
+logging:
+  # Log level: "debug", "info", "warn", "error" (optional, defaults to "info")
+  level: "info"
+  
+  # Log format: "json" or "console" (optional, defaults to "console")
+  format: "console"
+  
+  # Log file path (optional, logs to stdout if not set)
+  # file: "./koneksi-backup.log"
+
+# Advanced Configuration
+advanced:
+  # Enable dry run mode - no actual uploads (optional, defaults to false)
+  dry_run: false
+  
+  # Enable debug mode - verbose logging (optional, defaults to false)
+  debug: false
+  
+  # Rate limiting - max requests per second (optional, defaults to 10)
+  rate_limit: 10
+  
+  # Retry configuration
+  retry:
+    # Maximum number of retries (optional, defaults to 3)
+    max_attempts: 3
+    
+    # Initial retry delay in seconds (optional, defaults to 1)
+    initial_delay: 1
+    
+    # Maximum retry delay in seconds (optional, defaults to 30)
+    max_delay: 30
+
+# Restore Configuration
+restore:
+  # Default restore directory (optional, defaults to ./restore)
+  directory: "./restore"
+  
+  # Preserve directory structure on restore (optional, defaults to true)
+  preserve_structure: true
+  
+  # Overwrite existing files (optional, defaults to false)
+  overwrite: false
+
+# Note: You can override any of these settings using environment variables:
+# - KONEKSI_API_CLIENT_ID
+# - KONEKSI_API_CLIENT_SECRET
+# - KONEKSI_API_DIRECTORY_ID
+# - KONEKSI_API_URL
+# - KONEKSI_BACKUP_DIRECTORIES (comma-separated list)
+# - KONEKSI_BACKUP_COMPRESSION
+# - KONEKSI_BACKUP_WORKERS
+# - KONEKSI_DATABASE_PATH
+# - KONEKSI_REPORT_DIRECTORY
+# - KONEKSI_LOGGING_LEVEL
