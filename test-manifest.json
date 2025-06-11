@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "created_at": "2025-06-11T15:00:00Z",
+  "files": [
+    {
+      "id": "test-file-id-123",
+      "path": "test-restore-file.txt",
+      "size": 43,
+      "checksum": "abc123",
+      "compressed": false
+    }
+  ]
+}

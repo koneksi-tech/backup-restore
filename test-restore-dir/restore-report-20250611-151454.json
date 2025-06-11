@@ -1,0 +1,22 @@
+{
+  "backup_id": "",
+  "duration": 728615125,
+  "end_time": "2025-06-11T15:14:54.087672-04:00",
+  "errors": [
+    {
+      "FilePath": "",
+      "FileID": "",
+      "Error": "failed to download file: status 404: 404 page not found",
+      "Time": "2025-06-11T15:14:54.087664-04:00"
+    }
+  ],
+  "failed_files": 1,
+  "restore_id": "restore-20250611-151454",
+  "restored_files": 0,
+  "restored_size": 0,
+  "start_time": "2025-06-11T15:14:53.359049-04:00",
+  "success_rate": 0,
+  "target_dir": "test-restore-dir",
+  "total_files": 1,
+  "total_size": 0
+}

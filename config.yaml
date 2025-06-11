@@ -1,0 +1,18 @@
+api:
+  client_id: "id_HSUblhyy96CCouTzHqqZ0eesfmBEHknoqY7oeH60"
+  client_secret: "secret_CaHhNZqH7WCGkfnE7NeKW7bFUcg40zy6HkUSnLTO"
+  directory_id: "6776f4dc3c87cf2ee5b2a0d1"
+
+backup:
+  directories:
+    - "./test-directory"
+  compression: true
+
+database:
+  path: "./backup.db"
+
+report:
+  directory: "./reports"
+
+logging:
+  level: "info"
