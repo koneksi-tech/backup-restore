@@ -4,6 +4,7 @@ koneksi-backup
 *.dll
 *.so
 *.dylib
+dist/
 
 # Test files
 test-backup-dir/
