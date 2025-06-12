@@ -6,12 +6,15 @@ A powerful command-line tool for automated directory backup with real-time chang
 
 - **Real-time Monitoring**: Automatically detects changes in specified directories
 - **Single File Backup**: Backup individual files on demand
+- **Directory Compression**: Compress entire directories into tar.gz archives before backup
 - **Concurrent Backups**: Efficiently backs up multiple files in parallel
 - **Smart Detection**: Only backs up files that have actually changed (using checksums)
 - **Compression Support**: Optional gzip/zlib compression to save storage space
+- **Large File Support**: Handle files up to 2GB with automatic compression recommendations
 - **Database Tracking**: SQLite database tracks all backup history and metadata
 - **Comprehensive Reporting**: Generates detailed JSON reports for each backup session
-- **Full Restore Capability**: Restore backed up files from manifest files with automatic decompression
+- **Full Restore Capability**: Restore backed up files from manifest files
+- **Auto-extraction**: Automatically extract tar.gz archives after restore
 - **Configurable**: Flexible configuration for directories, exclusions, and performance
 
 ## Installation
