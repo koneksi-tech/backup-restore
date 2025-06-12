@@ -1,4 +1,4 @@
-# Koneksi Backup CLI
+# Koneksi Backup and Restore CLI
 
 A powerful command-line tool for automated directory backup with real-time change detection, built for the Koneksi Secure Digital Storage Solution.
 
