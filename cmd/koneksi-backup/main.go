@@ -18,6 +18,7 @@ import (
 	"github.com/koneksi/backup-cli/internal/config"
 	"github.com/koneksi/backup-cli/internal/monitor"
 	"github.com/koneksi/backup-cli/internal/report"
+	"github.com/koneksi/backup-cli/pkg/archive"
 	"github.com/koneksi/backup-cli/pkg/database"
 )
 
@@ -39,6 +40,11 @@ var runCmd = &cobra.Command{
 	Long:  `Start the backup service that monitors directories and automatically backs up changes.`,
 	RunE:  runBackupService,
 }
+
+var (
+	compressDir  bool
+	autoExtract  bool
+)
 
 var backupCmd = &cobra.Command{
 	Use:   "backup [path]",
@@ -86,7 +92,13 @@ func init() {
 	cobra.OnInitialize(initializeLogger)
 
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "config file (default is $HOME/.koneksi-backup/config.yaml)")
+
+	// Add flags for backup command
+	backupCmd.Flags().BoolVar(&compressDir, "compress-dir", false, "compress directory into a single tar.gz file before backup")
 	
+	// Add flags for restore command
+	restoreCmd.Flags().BoolVar(&autoExtract, "auto-extract", false, "automatically extract tar.gz files after restore")
+
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(backupCmd)
 	rootCmd.AddCommand(statusCmd)
@@ -107,7 +119,7 @@ func initializeLogger() {
 	config := zap.NewProductionConfig()
 	config.EncoderConfig.TimeKey = "timestamp"
 	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	
+
 	var err error
 	logger, err = config.Build()
 	if err != nil {
@@ -130,7 +142,7 @@ func runBackupService(cmd *cobra.Command, args []string) error {
 	if cfg.API.ClientSecret == "" {
 		cfg.API.ClientSecret = os.Getenv("KONEKSI_API_CLIENT_SECRET")
 	}
-	
+
 	logger.Debug("API credentials",
 		zap.String("clientID", cfg.API.ClientID),
 		zap.Bool("hasSecret", cfg.API.ClientSecret != ""),
@@ -169,7 +181,7 @@ func runBackupService(cmd *cobra.Command, args []string) error {
 	if err := apiClient.HealthCheck(ctx); err != nil {
 		return fmt.Errorf("API health check failed: %w", err)
 	}
-	
+
 	// Create backup directory if not specified
 	if cfg.API.DirectoryID == "" {
 		logger.Info("creating new backup directory")
@@ -233,12 +245,12 @@ func runBackupService(cmd *cobra.Command, args []string) error {
 	// Start services
 	watcher.Start(ctx)
 	backupService.Start(ctx)
-	
+
 	// Start database cleanup routine
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -297,7 +309,7 @@ func runBackupService(cmd *cobra.Command, args []string) error {
 
 	// Graceful shutdown
 	logger.Info("shutting down backup service...")
-	
+
 	// Stop services
 	cancel()
 	backupService.Stop()
@@ -317,10 +329,11 @@ func runBackupService(cmd *cobra.Command, args []string) error {
 
 func performBackup(cmd *cobra.Command, args []string) error {
 	targetPath := args[0]
-	
+
 	// Load configuration
 	cfg, err := config.Load(configFile)
 	if err != nil {
+		fmt.Printf("DEBUG: Failed to load config: %v\n", err)
 		// Create minimal config for one-time backup
 		cfg = &config.Config{}
 		cfg.API.BaseURL = "https://koneksi-tyk-gateway-3rvca.ondigitalocean.app"
@@ -344,14 +357,14 @@ func performBackup(cmd *cobra.Command, args []string) error {
 	if cfg.API.ClientSecret == "" {
 		cfg.API.ClientSecret = os.Getenv("KONEKSI_API_CLIENT_SECRET")
 	}
-	
-	fmt.Printf("DEBUG: ClientID = %s, HasSecret = %v\n", cfg.API.ClientID, cfg.API.ClientSecret != "")
+
+	fmt.Printf("DEBUG: ClientID = %s, HasSecret = %v, DirectoryID = %s\n", cfg.API.ClientID, cfg.API.ClientSecret != "", cfg.API.DirectoryID)
 
 	// Configure logger
 	if logger == nil {
 		initializeLogger()
 	}
-	
+
 	// Configure logger based on config
 	if cfg.Log.Level != "" {
 		level, err := zapcore.ParseLevel(cfg.Log.Level)
@@ -376,7 +389,7 @@ func performBackup(cmd *cobra.Command, args []string) error {
 	if err := apiClient.HealthCheck(ctx); err != nil {
 		return fmt.Errorf("API health check failed: %w", err)
 	}
-	
+
 	// Create backup directory if not specified
 	if cfg.API.DirectoryID == "" {
 		logger.Info("creating new backup directory")
@@ -435,9 +448,28 @@ func performBackup(cmd *cobra.Command, args []string) error {
 
 	// Perform backup
 	fmt.Printf("Starting backup of: %s\n", targetPath)
-	
-	if info.IsDir() {
-		// Backup directory
+
+	if info.IsDir() && compressDir {
+		// Compress directory and backup as single file
+		fmt.Println("Compressing directory before backup...")
+		archivePath, err := archive.CreateTempArchive(targetPath)
+		if err != nil {
+			return fmt.Errorf("failed to compress directory: %w", err)
+		}
+		defer os.Remove(archivePath) // Clean up temp file
+
+		// Get archive info
+		archiveInfo, err := os.Stat(archivePath)
+		if err != nil {
+			return fmt.Errorf("failed to stat archive: %w", err)
+		}
+
+		fmt.Printf("Directory compressed to %s (size: %d bytes)\n", archivePath, archiveInfo.Size())
+		
+		// Backup the archive as a single file
+		err = backupSingleFile(ctx, backupService, archivePath, archiveInfo)
+	} else if info.IsDir() {
+		// Backup directory normally
 		err = backupDirectory(ctx, backupService, targetPath, cfg.Backup.ExcludePatterns)
 	} else {
 		// Backup single file
@@ -459,13 +491,13 @@ func performBackup(cmd *cobra.Command, args []string) error {
 
 	// Print summary
 	fmt.Println(reporter.GenerateSummary())
-	
+
 	return nil
 }
 
 func backupSingleFile(ctx context.Context, service *backup.Service, filePath string, info os.FileInfo) error {
 	fmt.Printf("Backing up file: %s (size: %d bytes)\n", filePath, info.Size())
-	
+
 	change := monitor.FileChange{
 		Path:      filePath,
 		Operation: "manual",
@@ -473,29 +505,29 @@ func backupSingleFile(ctx context.Context, service *backup.Service, filePath str
 		Size:      info.Size(),
 		IsDir:     false,
 	}
-	
+
 	service.ProcessChange(change)
-	
+
 	// Wait for processing to complete
 	time.Sleep(5 * time.Second)
-	
+
 	return nil
 }
 
 func backupDirectory(ctx context.Context, service *backup.Service, dirPath string, excludePatterns []string) error {
 	fileCount := 0
-	
+
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			logger.Warn("error accessing path", zap.String("path", path), zap.Error(err))
 			return nil
 		}
-		
+
 		// Skip directories
 		if info.IsDir() {
 			return nil
 		}
-		
+
 		// Check exclude patterns
 		for _, pattern := range excludePatterns {
 			matched, err := filepath.Match(pattern, filepath.Base(path))
@@ -504,7 +536,7 @@ func backupDirectory(ctx context.Context, service *backup.Service, dirPath strin
 				return nil
 			}
 		}
-		
+
 		// Process file
 		change := monitor.FileChange{
 			Path:      path,
@@ -513,28 +545,28 @@ func backupDirectory(ctx context.Context, service *backup.Service, dirPath strin
 			Size:      info.Size(),
 			IsDir:     false,
 		}
-		
+
 		service.ProcessChange(change)
 		fileCount++
-		
+
 		if fileCount%10 == 0 {
 			fmt.Printf("Processed %d files...\n", fileCount)
 		}
-		
+
 		return nil
 	})
-	
+
 	if err != nil {
 		return err
 	}
-	
+
 	fmt.Printf("Queued %d files for backup\n", fileCount)
-	
+
 	// Wait for processing to complete
 	waitTime := time.Duration(fileCount/10+5) * time.Second
 	fmt.Printf("Waiting %v for backups to complete...\n", waitTime)
 	time.Sleep(waitTime)
-	
+
 	return nil
 }
 
@@ -608,7 +640,7 @@ func initConfig(cmd *cobra.Command, args []string) error {
 	}
 
 	configPath := filepath.Join(configDir, "config.yaml")
-	
+
 	defaultConfig := `# Koneksi Backup Configuration
 api:
   base_url: "https://koneksi-tyk-gateway-3rvca.ondigitalocean.app"
@@ -657,7 +689,7 @@ database:
 
 	fmt.Printf("Configuration file created at: %s\n", configPath)
 	fmt.Println("Please edit this file to add your backup directories.")
-	
+
 	return nil
 }
 
@@ -678,7 +710,7 @@ func restoreBackup(cmd *cobra.Command, args []string) error {
 		cfg.API.RetryCount = 3
 		cfg.Backup.Concurrent = 5
 	}
-	
+
 	// Use credentials from environment if not set
 	if cfg.API.ClientID == "" {
 		cfg.API.ClientID = os.Getenv("KONEKSI_API_CLIENT_ID")
@@ -722,6 +754,47 @@ func restoreBackup(cmd *cobra.Command, args []string) error {
 	fmt.Printf("- Restored: %d\n", progress.RestoredFiles)
 	fmt.Printf("- Failed: %d\n", progress.FailedFiles)
 	fmt.Printf("- Duration: %s\n", time.Since(progress.StartTime))
+
+	// Auto-extract tar.gz files if flag is set
+	if autoExtract {
+		fmt.Println("\nChecking for tar.gz files to extract...")
+		extractCount := 0
+		
+		err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil // Skip errors
+			}
+			
+			if !info.IsDir() && filepath.Ext(path) == ".gz" {
+				// Check if it's a tar.gz file
+				if len(path) > 7 && path[len(path)-7:] == ".tar.gz" {
+					fmt.Printf("Extracting %s...\n", path)
+					
+					// Extract to the same directory
+					extractDir := filepath.Dir(path)
+					if err := archive.DecompressArchive(path, extractDir); err != nil {
+						fmt.Printf("Failed to extract %s: %v\n", path, err)
+					} else {
+						extractCount++
+						// Remove the archive after successful extraction
+						os.Remove(path)
+						fmt.Printf("Extracted and removed %s\n", path)
+					}
+				}
+			}
+			return nil
+		})
+		
+		if err != nil {
+			fmt.Printf("Warning: error during extraction walk: %v\n", err)
+		}
+		
+		if extractCount > 0 {
+			fmt.Printf("\nExtracted %d archive(s)\n", extractCount)
+		} else {
+			fmt.Println("No tar.gz files found to extract")
+		}
+	}
 
 	if len(progress.Errors) > 0 {
 		fmt.Printf("\nErrors:\n")

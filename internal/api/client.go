@@ -42,11 +42,11 @@ type FileUploadRequest struct {
 }
 
 type FileUploadResponse struct {
-	FileID    string    `json:"file_id"`
-	FileName  string    `json:"file_name"`
-	Size      int64     `json:"size"`
+	FileID     string    `json:"file_id"`
+	FileName   string    `json:"file_name"`
+	Size       int64     `json:"size"`
 	UploadedAt time.Time `json:"uploaded_at"`
-	Status    string    `json:"status"`
+	Status     string    `json:"status"`
 }
 
 type DirectoryCreateRequest struct {
@@ -55,9 +55,9 @@ type DirectoryCreateRequest struct {
 }
 
 type DirectoryResponse struct {
-	DirectoryID string `json:"directory_id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	DirectoryID string    `json:"directory_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -98,51 +98,51 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 func (c *Client) UploadFile(ctx context.Context, filePath string, fileData io.Reader, size int64, checksum string) (*FileUploadResponse, error) {
 	// Using the correct files endpoint
 	endpoint := "/api/clients/v1/files"
-	
+
 	// Create multipart form data
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
-	
+
 	// Add file field
 	fileName := filepath.Base(filePath)
 	part, err := writer.CreateFormFile("file", fileName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create form file: %w", err)
 	}
-	
+
 	// Copy file data
 	if _, err := io.Copy(part, fileData); err != nil {
 		return nil, fmt.Errorf("failed to copy file data: %w", err)
 	}
-	
+
 	// Close writer to finalize the form
 	if err := writer.Close(); err != nil {
 		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
 	}
-	
+
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, "POST", c.BaseURL+endpoint, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	// Set headers
 	req.Header.Set("Client-ID", c.ClientID)
 	req.Header.Set("Client-Secret", c.ClientSecret)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	
+
 	// Debug log headers
 	c.logger.Debug("upload request headers",
 		zap.String("Client-ID", c.ClientID),
 		zap.Bool("hasSecret", c.ClientSecret != ""),
 		zap.String("Content-Type", writer.FormDataContentType()),
 	)
-	
+
 	// Add directory_id query parameter if provided
 	if c.DirectoryID != "" {
 		req.URL.RawQuery = fmt.Sprintf("directory_id=%s", c.DirectoryID)
 	}
-	
+
 	// Execute request
 	resp, err := c.HttpClient.Do(req)
 	if err != nil {
@@ -153,7 +153,7 @@ func (c *Client) UploadFile(ctx context.Context, filePath string, fileData io.Re
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		// Log response for debugging
 		body, _ := io.ReadAll(resp.Body)
-		c.logger.Error("upload failed", 
+		c.logger.Error("upload failed",
 			zap.Int("status", resp.StatusCode),
 			zap.String("response", string(body)),
 		)
@@ -166,14 +166,14 @@ func (c *Client) UploadFile(ctx context.Context, filePath string, fileData io.Re
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
-	
+
 	// Log the raw response for debugging
 	c.logger.Debug("upload response", zap.String("body", string(respBody)))
-	
+
 	// Parse the actual response
 	var apiResp struct {
 		Data struct {
-			ID          string `json:"id"`
+			FileID      string `json:"file_id"`
 			ContentType string `json:"content_type"`
 			DirectoryID string `json:"directory_id"`
 			Hash        string `json:"hash"`
@@ -183,18 +183,18 @@ func (c *Client) UploadFile(ctx context.Context, filePath string, fileData io.Re
 		Message string `json:"message"`
 		Status  string `json:"status"`
 	}
-	
+
 	if err := json.Unmarshal(respBody, &apiResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-	
+
 	// Create response from API data
-	// Use ID if available, otherwise fall back to hash
-	fileID := apiResp.Data.ID
+	// Use FileID if available, otherwise fall back to hash
+	fileID := apiResp.Data.FileID
 	if fileID == "" {
 		fileID = apiResp.Data.Hash
 	}
-	
+
 	uploadResp := &FileUploadResponse{
 		FileID:     fileID,
 		FileName:   apiResp.Data.Name,
@@ -211,18 +211,18 @@ func (c *Client) GetFileIDByHash(ctx context.Context, hash string) (string, erro
 	if c.DirectoryID == "" {
 		return "", fmt.Errorf("directory ID not set")
 	}
-	
+
 	endpoint := fmt.Sprintf("/api/clients/v1/directories/%s", c.DirectoryID)
 	resp, err := c.doRequest(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return "", c.parseError(resp)
 	}
-	
+
 	var dirResp struct {
 		Data struct {
 			Files []struct {
@@ -231,49 +231,49 @@ func (c *Client) GetFileIDByHash(ctx context.Context, hash string) (string, erro
 			} `json:"files"`
 		} `json:"data"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&dirResp); err != nil {
 		return "", fmt.Errorf("failed to decode directory response: %w", err)
 	}
-	
+
 	// Find file by hash
 	for _, file := range dirResp.Data.Files {
 		if file.Hash == hash {
 			return file.ID, nil
 		}
 	}
-	
+
 	return "", fmt.Errorf("file with hash %s not found in directory", hash)
 }
 
 func (c *Client) CreateDirectory(ctx context.Context, name, description string) (*DirectoryResponse, error) {
 	endpoint := "/api/clients/v1/directories"
-	
+
 	reqBody := DirectoryCreateRequest{
 		Name:        name,
 		Description: description,
 	}
-	
+
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	
+
 	resp, err := c.doRequest(ctx, "POST", endpoint, bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return nil, c.parseError(resp)
 	}
-	
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
-	
+
 	// Parse the response
 	var apiResp struct {
 		Data struct {
@@ -285,14 +285,14 @@ func (c *Client) CreateDirectory(ctx context.Context, name, description string) 
 		Message string `json:"message"`
 		Status  string `json:"status"`
 	}
-	
+
 	if err := json.Unmarshal(body, &apiResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-	
+
 	// Parse time
 	createdAt, _ := time.Parse(time.RFC3339, apiResp.Data.CreatedAt)
-	
+
 	return &DirectoryResponse{
 		DirectoryID: apiResp.Data.ID,
 		Name:        apiResp.Data.Name,
@@ -303,37 +303,23 @@ func (c *Client) CreateDirectory(ctx context.Context, name, description string) 
 
 func (c *Client) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, error) {
 	// Try different endpoint formats
-	endpoint := fmt.Sprintf("/api/clients/v1/files/%s", fileID)
-	
-	c.logger.Debug("downloading file", 
+	endpoint := fmt.Sprintf("/api/clients/v1/files/%s/download", fileID)
+
+	c.logger.Debug("downloading file",
 		zap.String("fileID", fileID),
 		zap.String("endpoint", endpoint),
 	)
-	
+
 	resp, err := c.doRequest(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-		// If the standard endpoint fails, try with /download suffix
-		if resp.StatusCode == http.StatusBadRequest {
-			endpoint = fmt.Sprintf("/api/clients/v1/files/%s/download", fileID)
-			c.logger.Debug("trying alternative endpoint", zap.String("endpoint", endpoint))
-			
-			resp2, err2 := c.doRequest(ctx, "GET", endpoint, nil)
-			if err2 != nil {
-				return nil, c.parseError(resp)
-			}
-			if resp2.StatusCode == http.StatusOK {
-				return resp2.Body, nil
-			}
-			resp2.Body.Close()
-		}
 		return nil, c.parseError(resp)
 	}
-	
+
 	// Return the response body - caller is responsible for closing it
 	return resp.Body, nil
 }
@@ -359,7 +345,7 @@ func (c *Client) GetPeers(ctx context.Context) ([]interface{}, error) {
 
 func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io.Reader) (*http.Response, error) {
 	url := c.BaseURL + endpoint
-	
+
 	var lastErr error
 	for i := 0; i <= c.retryCount; i++ {
 		if i > 0 {
@@ -409,7 +395,7 @@ func (c *Client) parseError(resp *http.Response) error {
 	}
 
 	// Log raw error response
-	c.logger.Debug("API error response", 
+	c.logger.Debug("API error response",
 		zap.Int("status", resp.StatusCode),
 		zap.String("body", string(body)),
 	)
@@ -433,6 +419,6 @@ func (c *Client) parseError(resp *http.Response) error {
 	if errResp.Error != "" {
 		return fmt.Errorf("API error %s: %s", errResp.Code, errResp.Error)
 	}
-	
+
 	return fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 }

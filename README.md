@@ -73,6 +73,26 @@ koneksi-backup status
 koneksi-backup report
 ```
 
+### Directory Compression
+
+Compress entire directories into a single archive before backup:
+
+```bash
+# Backup a directory as a compressed tar.gz archive
+koneksi-backup backup ./my-project --compress-dir
+
+# This will:
+# 1. Compress the directory to a temporary tar.gz file
+# 2. Upload the compressed archive (much faster for many files)
+# 3. Clean up the temporary file
+
+# Example output:
+# Starting backup of: ./my-project
+# Compressing directory before backup...
+# Directory compressed to /tmp/backup-123456.tar.gz (size: 2.3MB)
+# Backup completed successfully
+```
+
 ### Restore Operations
 
 ```bash
@@ -82,8 +102,49 @@ koneksi-backup manifest ./reports/backup-20240111-143022.json restore-manifest.j
 # Restore files from manifest
 koneksi-backup restore restore-manifest.json /path/to/restore/directory
 
+# Restore with automatic extraction of tar.gz archives
+koneksi-backup restore restore-manifest.json /path/to/restore --auto-extract
+
 # Restore a single file by ID
 koneksi-backup restore-file <file-id> /path/to/restored/file.txt
+```
+
+### Large File Backup Example
+
+For files larger than 100MB, compression is recommended:
+
+```bash
+# Example: Backing up a 1GB database dump
+# First, compress the file
+gzip large-database.sql  # Creates large-database.sql.gz
+
+# Then backup the compressed file
+koneksi-backup backup large-database.sql.gz
+
+# Or use directory compression for multiple large files
+koneksi-backup backup ./database-dumps --compress-dir
+```
+
+### Real-World Examples
+
+```bash
+# Backup a development project (excluding build artifacts)
+koneksi-backup backup ./my-app --compress-dir
+
+# Backup important documents
+koneksi-backup backup ~/Documents/important
+
+# Backup and restore a website
+# 1. Backup
+koneksi-backup backup /var/www/html --compress-dir
+# 2. Create manifest from report
+koneksi-backup manifest reports/backup-20250612-*.json website-manifest.json
+# 3. Restore to new server
+koneksi-backup restore website-manifest.json /var/www/html --auto-extract
+
+# Backup large log files with compression
+tar -czf logs-archive.tar.gz /var/log/myapp/
+koneksi-backup backup logs-archive.tar.gz
 ```
 
 ## Configuration
@@ -203,6 +264,44 @@ backup:
   max_file_size: 5368709120  # 5GB max file size
   check_interval: 60   # Check for changes every minute
 ```
+
+### Best Practices for Large Files
+
+1. **Use Compression**: Always compress large files before backup
+   ```bash
+   # For single large files
+   gzip myfile.sql                          # Creates myfile.sql.gz
+   koneksi-backup backup myfile.sql.gz
+   
+   # For directories with large files
+   koneksi-backup backup ./large-dir --compress-dir
+   ```
+
+2. **Compression Ratios**: Typical compression results
+   - Text files: 80-95% reduction
+   - Log files: 90-98% reduction  
+   - Database dumps: 70-90% reduction
+   - Already compressed files (zip, jpg, mp4): minimal reduction
+
+3. **Size Recommendations**:
+   - Files < 10MB: Direct backup without compression
+   - Files 10MB-100MB: Consider compression based on file type
+   - Files > 100MB: Always use compression
+   - Directories with many files: Use `--compress-dir` flag
+
+4. **Example: 1GB File Backup**
+   ```bash
+   # Original file: 1GB text file
+   ls -lh large-file.txt
+   # -rw-r--r-- 1 user user 1.0G Jun 12 10:00 large-file.txt
+   
+   # Compress (reduces to ~50MB for text)
+   gzip large-file.txt
+   
+   # Backup compressed file
+   koneksi-backup backup large-file.txt.gz
+   # Upload time: ~30 seconds vs 10+ minutes uncompressed
+   ```
 
 ### Logging
 
