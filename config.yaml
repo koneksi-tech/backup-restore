@@ -1,12 +1,14 @@
 api:
+  base_url: "https://staging.koneksi.co.kr"
   client_id: "id_HSUblhyy96CCouTzHqqZ0eesfmBEHknoqY7oeH60"
-  client_secret: "secret_CaHhNZqH7WCGkfnE7NeKW7bFUcg40zy6HkUSnLTO"
+  client_secret: "sk_XuxJikg7FfvtmsHNpVpHUzWanCuMARxZ3GqBxAf0vA8"
   directory_id: "6776f4dc3c87cf2ee5b2a0d1"
 
 backup:
   directories:
-    - "./test-directory"
+    - "./monitored-dir"
   compression: true
+  scan_interval: 5  # Check every 5 seconds for demo purposes
 
 database:
   path: "./backup.db"

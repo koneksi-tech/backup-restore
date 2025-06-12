@@ -11,6 +11,7 @@ test-backup-dir/
 test-restore/
 test-*.go
 *.test
+config.yaml
 
 # Backup and restore files
 backup.db
