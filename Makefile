@@ -14,7 +14,8 @@ GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
-GOWORK=GOWORK=off
+# Disable Go workspace mode
+export GOWORK=off
 
 # Directories
 CMD_DIR=./cmd/koneksi-backup
@@ -28,25 +29,25 @@ all: test build
 # Build the binary
 build:
 	@echo "Building $(BINARY_NAME)..."
-	@$(GOWORK) $(GOBUILD) $(LDFLAGS) -mod=mod -o $(BINARY_NAME) $(CMD_DIR)/main.go
+	@$(GOBUILD) $(LDFLAGS) -mod=mod -o $(BINARY_NAME) $(CMD_DIR)/main.go
 
 # Build for multiple platforms
 build-all: build-linux build-windows build-darwin
 
 build-linux:
 	@echo "Building for Linux..."
-	@GOOS=linux GOARCH=amd64 $(GOWORK) $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-linux-amd64 $(CMD_DIR)/main.go
-	@GOOS=linux GOARCH=arm64 $(GOWORK) $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-linux-arm64 $(CMD_DIR)/main.go
+	@GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-linux-amd64 $(CMD_DIR)/main.go
+	@GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-linux-arm64 $(CMD_DIR)/main.go
 
 build-windows:
 	@echo "Building for Windows..."
-	@GOOS=windows GOARCH=amd64 $(GOWORK) $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-windows-amd64.exe $(CMD_DIR)/main.go
-	@GOOS=windows GOARCH=arm64 $(GOWORK) $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-windows-arm64.exe $(CMD_DIR)/main.go
+	@GOOS=windows GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-windows-amd64.exe $(CMD_DIR)/main.go
+	@GOOS=windows GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-windows-arm64.exe $(CMD_DIR)/main.go
 
 build-darwin:
 	@echo "Building for macOS..."
-	@GOOS=darwin GOARCH=amd64 $(GOWORK) $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-darwin-amd64 $(CMD_DIR)/main.go
-	@GOOS=darwin GOARCH=arm64 $(GOWORK) $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-darwin-arm64 $(CMD_DIR)/main.go
+	@GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-darwin-amd64 $(CMD_DIR)/main.go
+	@GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -mod=mod -o $(DIST_DIR)/$(BINARY_NAME)-darwin-arm64 $(CMD_DIR)/main.go
 
 # Clean build artifacts
 clean:
@@ -62,12 +63,12 @@ clean:
 # Run tests
 test:
 	@echo "Running tests..."
-	@$(GOWORK) $(GOTEST) -v -mod=mod ./...
+	@$(GOTEST) -v -mod=mod ./...
 
 # Run tests with coverage
 test-coverage:
 	@echo "Running tests with coverage..."
-	@$(GOWORK) $(GOTEST) -v -mod=mod -coverprofile=coverage.out ./...
+	@$(GOTEST) -v -mod=mod -coverprofile=coverage.out ./...
 	@$(GOCMD) tool cover -html=coverage.out -o coverage.html
 
 # Install dependencies
