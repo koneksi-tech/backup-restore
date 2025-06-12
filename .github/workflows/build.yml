@@ -116,7 +116,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: binaries
+          name: binary-${{ matrix.os }}-${{ matrix.arch }}
           path: |
             *.zip
             *.tar.gz
@@ -134,7 +134,6 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: binaries
           path: ./artifacts
 
       - name: Create Release
@@ -173,7 +172,8 @@ jobs:
 
       - name: Upload Release Assets
         run: |
-          for file in ./artifacts/*; do
+          # Find all zip and tar.gz files in subdirectories
+          find ./artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" \) | while read file; do
             asset_name=$(basename "$file")
             echo "Uploading $asset_name"
             
