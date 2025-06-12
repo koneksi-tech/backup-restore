@@ -21,7 +21,7 @@ A powerful command-line tool for automated directory backup with real-time chang
 
 ```bash
 # Clone the repository
-git clone https://github.com/koneksi-tech/koneksi-backup-tool.git
+git clone https://github.com/koneksi-tech/backup-restore.git
 cd koneksi-backup-cli
 
 # Build the CLI
