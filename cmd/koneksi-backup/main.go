@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/koneksi/backup-cli/internal/api"
+	"github.com/koneksi/backup-cli/internal/auth"
 	"github.com/koneksi/backup-cli/internal/backup"
 	"github.com/koneksi/backup-cli/internal/config"
 	"github.com/koneksi/backup-cli/internal/monitor"
@@ -42,8 +44,8 @@ var runCmd = &cobra.Command{
 }
 
 var (
-	compressDir  bool
-	autoExtract  bool
+	compressDir bool
+	autoExtract bool
 )
 
 var backupCmd = &cobra.Command{
@@ -88,6 +90,102 @@ var manifestCmd = &cobra.Command{
 	RunE:  createManifest,
 }
 
+// Directory management commands
+var dirCmd = &cobra.Command{
+	Use:   "dir",
+	Short: "Manage backup directories",
+	Long:  `Create, list, update, and remove backup directories in Koneksi storage.`,
+}
+
+var dirListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all directories",
+	Long:  `List all backup directories in your Koneksi account.`,
+	RunE:  listDirectories,
+}
+
+var dirCreateCmd = &cobra.Command{
+	Use:   "create [name]",
+	Short: "Create a new directory",
+	Long:  `Create a new backup directory with the specified name.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  createDirectory,
+}
+
+var dirRemoveCmd = &cobra.Command{
+	Use:   "remove [directory-id]",
+	Short: "Remove a directory",
+	Long:  `Remove a backup directory and all its contents.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  removeDirectory,
+}
+
+var (
+	dirDescription string
+	dirForceRemove bool
+)
+
+// Auth management commands
+var authCmd = &cobra.Command{
+	Use:   "auth",
+	Short: "Manage authentication and API keys",
+	Long:  `Register, login, and manage API keys for Koneksi storage.`,
+}
+
+var authRegisterCmd = &cobra.Command{
+	Use:   "register",
+	Short: "Register a new user account",
+	Long:  `Register a new user account with Koneksi storage service.`,
+	RunE:  authRegister,
+}
+
+var authLoginCmd = &cobra.Command{
+	Use:   "login",
+	Short: "Login to get access token",
+	Long:  `Login with email and password to receive an access token.`,
+	RunE:  authLogin,
+}
+
+var authCreateKeyCmd = &cobra.Command{
+	Use:   "create-key [name]",
+	Short: "Create a new API key",
+	Long:  `Create a new API key (service account) for programmatic access.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  authCreateKey,
+}
+
+var authRevokeKeyCmd = &cobra.Command{
+	Use:   "revoke-key [client-id]",
+	Short: "Revoke an API key",
+	Long:  `Revoke an existing API key by its client ID.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  authRevokeKey,
+}
+
+var authVerifyCmd = &cobra.Command{
+	Use:   "verify [verification-code]",
+	Short: "Verify your account",
+	Long:  `Verify your account using the verification code sent to your email after registration.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  authVerify,
+}
+
+var (
+	// Registration flags
+	firstName  string
+	middleName string
+	lastName   string
+	suffix     string
+	email      string
+	password   string
+
+	// Auth token for API key operations
+	authToken string
+
+	// Base URL for auth operations
+	authBaseURL string = "https://staging.koneksi.co.kr"
+)
+
 func init() {
 	cobra.OnInitialize(initializeLogger)
 
@@ -95,9 +193,47 @@ func init() {
 
 	// Add flags for backup command
 	backupCmd.Flags().BoolVar(&compressDir, "compress-dir", false, "compress directory into a single tar.gz file before backup")
-	
+
 	// Add flags for restore command
 	restoreCmd.Flags().BoolVar(&autoExtract, "auto-extract", false, "automatically extract tar.gz files after restore")
+
+	// Add flags for directory commands
+	dirCreateCmd.Flags().StringVarP(&dirDescription, "description", "d", "", "Directory description")
+	dirRemoveCmd.Flags().BoolVarP(&dirForceRemove, "force", "f", false, "Force remove without confirmation")
+
+	// Add directory subcommands
+	dirCmd.AddCommand(dirListCmd)
+	dirCmd.AddCommand(dirCreateCmd)
+	dirCmd.AddCommand(dirRemoveCmd)
+
+	// Add flags for auth commands
+	authRegisterCmd.Flags().StringVar(&firstName, "first-name", "", "First name (required)")
+	authRegisterCmd.Flags().StringVar(&lastName, "last-name", "", "Last name (required)")
+	authRegisterCmd.Flags().StringVar(&middleName, "middle-name", "", "Middle name")
+	authRegisterCmd.Flags().StringVar(&suffix, "suffix", "", "Suffix")
+	authRegisterCmd.Flags().StringVarP(&email, "email", "e", "", "Email address (required)")
+	authRegisterCmd.Flags().StringVarP(&password, "password", "p", "", "Password (required)")
+	authRegisterCmd.MarkFlagRequired("first-name")
+	authRegisterCmd.MarkFlagRequired("last-name")
+	authRegisterCmd.MarkFlagRequired("email")
+	authRegisterCmd.MarkFlagRequired("password")
+
+	authLoginCmd.Flags().StringVarP(&email, "email", "e", "", "Email address (required)")
+	authLoginCmd.Flags().StringVarP(&password, "password", "p", "", "Password (required)")
+	authLoginCmd.MarkFlagRequired("email")
+	authLoginCmd.MarkFlagRequired("password")
+
+	authCreateKeyCmd.Flags().StringVarP(&authToken, "token", "t", "", "Bearer token from login")
+	authRevokeKeyCmd.Flags().StringVarP(&authToken, "token", "t", "", "Bearer token from login")
+	authVerifyCmd.Flags().StringVarP(&authToken, "token", "t", "", "Bearer token from login (required)")
+	authVerifyCmd.MarkFlagRequired("token")
+
+	// Add auth subcommands
+	authCmd.AddCommand(authRegisterCmd)
+	authCmd.AddCommand(authLoginCmd)
+	authCmd.AddCommand(authCreateKeyCmd)
+	authCmd.AddCommand(authRevokeKeyCmd)
+	authCmd.AddCommand(authVerifyCmd)
 
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(backupCmd)
@@ -106,6 +242,8 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(restoreCmd)
 	rootCmd.AddCommand(manifestCmd)
+	rootCmd.AddCommand(dirCmd)
+	rootCmd.AddCommand(authCmd)
 }
 
 func main() {
@@ -465,7 +603,7 @@ func performBackup(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Printf("Directory compressed to %s (size: %d bytes)\n", archivePath, archiveInfo.Size())
-		
+
 		// Backup the archive as a single file
 		err = backupSingleFile(ctx, backupService, archivePath, archiveInfo)
 	} else if info.IsDir() {
@@ -759,17 +897,17 @@ func restoreBackup(cmd *cobra.Command, args []string) error {
 	if autoExtract {
 		fmt.Println("\nChecking for tar.gz files to extract...")
 		extractCount := 0
-		
+
 		err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil // Skip errors
 			}
-			
+
 			if !info.IsDir() && filepath.Ext(path) == ".gz" {
 				// Check if it's a tar.gz file
 				if len(path) > 7 && path[len(path)-7:] == ".tar.gz" {
 					fmt.Printf("Extracting %s...\n", path)
-					
+
 					// Extract to the same directory
 					extractDir := filepath.Dir(path)
 					if err := archive.DecompressArchive(path, extractDir); err != nil {
@@ -784,11 +922,11 @@ func restoreBackup(cmd *cobra.Command, args []string) error {
 			}
 			return nil
 		})
-		
+
 		if err != nil {
 			fmt.Printf("Warning: error during extraction walk: %v\n", err)
 		}
-		
+
 		if extractCount > 0 {
 			fmt.Printf("\nExtracted %d archive(s)\n", extractCount)
 		} else {
@@ -848,4 +986,309 @@ func createManifest(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  koneksi-backup restore %s /path/to/restore\n", outputFile)
 
 	return nil
+}
+
+// Directory management functions
+func listDirectories(cmd *cobra.Command, args []string) error {
+	// Load configuration
+	cfg, err := config.Load(configFile)
+	if err != nil {
+		// Create minimal config
+		cfg = &config.Config{}
+		cfg.API.BaseURL = "https://koneksi-tyk-gateway-3rvca.ondigitalocean.app"
+		cfg.API.ClientID = os.Getenv("KONEKSI_API_CLIENT_ID")
+		cfg.API.ClientSecret = os.Getenv("KONEKSI_API_CLIENT_SECRET")
+		cfg.API.Timeout = 30
+		cfg.API.RetryCount = 3
+	}
+
+	// Use credentials from environment if not set
+	if cfg.API.ClientID == "" {
+		cfg.API.ClientID = os.Getenv("KONEKSI_API_CLIENT_ID")
+	}
+	if cfg.API.ClientSecret == "" {
+		cfg.API.ClientSecret = os.Getenv("KONEKSI_API_CLIENT_SECRET")
+	}
+
+	if cfg.API.ClientID == "" || cfg.API.ClientSecret == "" {
+		return fmt.Errorf("API credentials not set. Please set KONEKSI_API_CLIENT_ID and KONEKSI_API_CLIENT_SECRET environment variables")
+	}
+
+	// Initialize logger if needed
+	if logger == nil {
+		initializeLogger()
+	}
+
+	// Create API client
+	apiClient := api.NewClient(
+		cfg.API.BaseURL,
+		cfg.API.ClientID,
+		cfg.API.ClientSecret,
+		"", // No default directory for directory management
+		time.Duration(cfg.API.Timeout)*time.Second,
+		cfg.API.RetryCount,
+		logger,
+	)
+
+	ctx := context.Background()
+
+	// Test API connection
+	if err := apiClient.HealthCheck(ctx); err != nil {
+		return fmt.Errorf("API health check failed: %w", err)
+	}
+
+	// List directories
+	directories, err := apiClient.ListDirectories(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list directories: %w", err)
+	}
+
+	if len(directories) == 0 {
+		fmt.Println("No directories found.")
+		return nil
+	}
+
+	// Print directories
+	fmt.Printf("%-30s %-30s %-20s %-10s %-10s\n", "ID", "Name", "Created", "Files", "Size")
+	fmt.Printf("%-30s %-30s %-20s %-10s %-10s\n", strings.Repeat("-", 30), strings.Repeat("-", 30), strings.Repeat("-", 20), strings.Repeat("-", 10), strings.Repeat("-", 10))
+
+	for _, dir := range directories {
+		createdStr := dir.CreatedAt.Format("2006-01-02 15:04")
+		sizeStr := formatBytes(dir.TotalSize)
+		fmt.Printf("%-30s %-30s %-20s %-10d %-10s\n",
+			dir.ID, dir.Name, createdStr, dir.FileCount, sizeStr)
+	}
+
+	return nil
+}
+
+func createDirectory(cmd *cobra.Command, args []string) error {
+	name := args[0]
+
+	// Load configuration
+	cfg, err := config.Load(configFile)
+	if err != nil {
+		// Create minimal config
+		cfg = &config.Config{}
+		cfg.API.BaseURL = "https://koneksi-tyk-gateway-3rvca.ondigitalocean.app"
+		cfg.API.ClientID = os.Getenv("KONEKSI_API_CLIENT_ID")
+		cfg.API.ClientSecret = os.Getenv("KONEKSI_API_CLIENT_SECRET")
+		cfg.API.Timeout = 30
+		cfg.API.RetryCount = 3
+	}
+
+	// Use credentials from environment if not set
+	if cfg.API.ClientID == "" {
+		cfg.API.ClientID = os.Getenv("KONEKSI_API_CLIENT_ID")
+	}
+	if cfg.API.ClientSecret == "" {
+		cfg.API.ClientSecret = os.Getenv("KONEKSI_API_CLIENT_SECRET")
+	}
+
+	// Initialize logger if needed
+	if logger == nil {
+		initializeLogger()
+	}
+
+	// Create API client
+	apiClient := api.NewClient(
+		cfg.API.BaseURL,
+		cfg.API.ClientID,
+		cfg.API.ClientSecret,
+		"",
+		time.Duration(cfg.API.Timeout)*time.Second,
+		cfg.API.RetryCount,
+		logger,
+	)
+
+	ctx := context.Background()
+
+	// Test API connection
+	if err := apiClient.HealthCheck(ctx); err != nil {
+		return fmt.Errorf("API health check failed: %w", err)
+	}
+
+	// Create directory
+	fmt.Printf("Creating directory: %s\n", name)
+
+	if dirDescription == "" {
+		dirDescription = fmt.Sprintf("Backup directory created by Koneksi CLI at %s", time.Now().Format("2006-01-02 15:04:05"))
+	}
+
+	dirResp, err := apiClient.CreateDirectory(ctx, name, dirDescription)
+	if err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	fmt.Printf("Directory created successfully!\n")
+	fmt.Printf("ID: %s\n", dirResp.DirectoryID)
+	fmt.Printf("Name: %s\n", dirResp.Name)
+	fmt.Printf("Description: %s\n", dirResp.Description)
+
+	return nil
+}
+
+func removeDirectory(cmd *cobra.Command, args []string) error {
+	dirID := args[0]
+
+	// Load configuration
+	cfg, err := config.Load(configFile)
+	if err != nil {
+		// Create minimal config
+		cfg = &config.Config{}
+		cfg.API.BaseURL = "https://koneksi-tyk-gateway-3rvca.ondigitalocean.app"
+		cfg.API.ClientID = os.Getenv("KONEKSI_API_CLIENT_ID")
+		cfg.API.ClientSecret = os.Getenv("KONEKSI_API_CLIENT_SECRET")
+		cfg.API.Timeout = 30
+		cfg.API.RetryCount = 3
+	}
+
+	// Use credentials from environment if not set
+	if cfg.API.ClientID == "" {
+		cfg.API.ClientID = os.Getenv("KONEKSI_API_CLIENT_ID")
+	}
+	if cfg.API.ClientSecret == "" {
+		cfg.API.ClientSecret = os.Getenv("KONEKSI_API_CLIENT_SECRET")
+	}
+
+	// Initialize logger if needed
+	if logger == nil {
+		initializeLogger()
+	}
+
+	// Create API client
+	apiClient := api.NewClient(
+		cfg.API.BaseURL,
+		cfg.API.ClientID,
+		cfg.API.ClientSecret,
+		"",
+		time.Duration(cfg.API.Timeout)*time.Second,
+		cfg.API.RetryCount,
+		logger,
+	)
+
+	ctx := context.Background()
+
+	// Test API connection
+	if err := apiClient.HealthCheck(ctx); err != nil {
+		return fmt.Errorf("API health check failed: %w", err)
+	}
+
+	// Get directory info first
+	directories, err := apiClient.ListDirectories(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list directories: %w", err)
+	}
+
+	var targetDir *api.DirectoryInfo
+	for _, dir := range directories {
+		if dir.ID == dirID {
+			targetDir = &dir
+			break
+		}
+	}
+
+	if targetDir == nil {
+		return fmt.Errorf("directory not found: %s", dirID)
+	}
+
+	// Confirm removal if not forced
+	if !dirForceRemove {
+		fmt.Printf("Are you sure you want to remove directory '%s' (ID: %s)?\n", targetDir.Name, dirID)
+		fmt.Printf("This directory contains %d files totaling %s.\n", targetDir.FileCount, formatBytes(targetDir.TotalSize))
+		fmt.Print("This action cannot be undone. Type 'yes' to confirm: ")
+
+		var response string
+		fmt.Scanln(&response)
+		if response != "yes" {
+			fmt.Println("Directory removal cancelled.")
+			return nil
+		}
+	}
+
+	// Remove directory
+	fmt.Printf("Removing directory %s...\n", dirID)
+
+	// Note: Actual deletion would require API support
+	fmt.Printf("Directory removal functionality not yet implemented in API.\n")
+	fmt.Printf("Would remove directory: %s (%s)\n", targetDir.Name, dirID)
+
+	return nil
+}
+
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// Auth management functions
+func authRegister(cmd *cobra.Command, args []string) error {
+	authClient := auth.NewClient(authBaseURL)
+	
+	req := auth.RegisterRequest{
+		FirstName:       firstName,
+		LastName:        lastName,
+		Email:           email,
+		Password:        password,
+		ConfirmPassword: password,
+	}
+
+	// Set optional fields
+	if middleName != "" {
+		req.MiddleName = &middleName
+	}
+	if suffix != "" {
+		req.Suffix = &suffix
+	}
+
+	return authClient.Register(req)
+}
+
+func authLogin(cmd *cobra.Command, args []string) error {
+	authClient := auth.NewClient(authBaseURL)
+	
+	req := auth.LoginRequest{
+		Email:    email,
+		Password: password,
+	}
+
+	return authClient.Login(req)
+}
+
+func authCreateKey(cmd *cobra.Command, args []string) error {
+	authClient := auth.NewClient(authBaseURL)
+	
+	req := auth.CreateKeyRequest{
+		Name: args[0],
+	}
+
+	return authClient.CreateKey(req, authToken)
+}
+
+func authRevokeKey(cmd *cobra.Command, args []string) error {
+	authClient := auth.NewClient(authBaseURL)
+	
+	req := auth.RevokeKeyRequest{
+		ClientID: args[0],
+	}
+
+	return authClient.RevokeKey(req, authToken)
+}
+
+func authVerify(cmd *cobra.Command, args []string) error {
+	authClient := auth.NewClient(authBaseURL)
+	
+	req := auth.VerifyRequest{
+		VerificationCode: args[0],
+	}
+
+	return authClient.Verify(req, authToken)
 }

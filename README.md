@@ -19,16 +19,48 @@ A powerful command-line tool for automated directory backup with real-time chang
 
 ## Installation
 
+### Using Make (Recommended)
+
 ```bash
 # Clone the repository
 git clone https://github.com/koneksi-tech/backup-restore.git
 cd koneksi-backup-cli
 
-# Build the CLI
+# Build the CLI using make
+make build
+
+# Or build for all platforms
+make build-all
+
+# Install to $GOPATH/bin
+make install
+```
+
+### Manual Build
+
+```bash
+# Build the CLI manually
 go build -o koneksi-backup cmd/koneksi-backup/main.go
 
 # Optional: Install globally
 go install ./cmd/koneksi-backup
+```
+
+### Available Make Targets
+
+```bash
+make              # Run tests and build (default)
+make build        # Build for current platform
+make build-all    # Build for Linux, Windows, and macOS
+make test         # Run unit tests
+make test-coverage # Run tests with coverage report
+make clean        # Clean build artifacts
+make deps         # Download dependencies
+make fmt          # Format code
+make lint         # Run linter
+make package      # Create distribution packages
+make docker       # Build Docker image
+make help         # Show all available targets
 ```
 
 ## Quick Start
@@ -316,18 +348,49 @@ log:
   file: "/var/log/koneksi-backup.log"
 ```
 
-## API Credentials
+## API Credentials and Authentication
 
-The CLI requires valid Koneksi API credentials. You can obtain these from:
+### User Registration and API Key Management
 
-1. Create an account on the Koneksi platform
-2. Navigate to the API Keys page
-3. Generate a new API key with appropriate permissions
-4. Add the credentials to your config file or use environment variables
+The CLI includes built-in authentication commands to register users and manage API keys:
 
-### Using Environment Variables
+```bash
+# 1. Register a new account
+koneksi-backup auth register \
+    --first-name "John" \
+    --last-name "Doe" \
+    --email "john@example.com" \
+    --password "StrongPass123!"
 
-You can also configure credentials using environment variables:
+# 2. Login to get access token
+koneksi-backup auth login \
+    --email "john@example.com" \
+    --password "StrongPass123!"
+
+# 3. Verify your account (check email for verification code)
+koneksi-backup auth verify "123456" -t <access-token>
+
+# 4. Create API key (requires verified account)
+koneksi-backup auth create-key "My Backup Key" -t <access-token>
+
+# 5. Revoke API key when no longer needed
+koneksi-backup auth revoke-key <client-id> -t <access-token>
+```
+
+### Using API Credentials
+
+Once you have your API credentials, configure them:
+
+#### Option 1: Configuration File
+
+Add to your `~/.koneksi-backup/config.yaml`:
+```yaml
+api:
+  client_id: "your-client-id"
+  client_secret: "your-client-secret"
+```
+
+#### Option 2: Environment Variables
 
 ```bash
 export KONEKSI_API_CLIENT_ID="your-client-id"
@@ -336,6 +399,24 @@ export KONEKSI_API_DIRECTORY_ID="your-directory-id"
 
 # Run backup
 koneksi-backup backup /path/to/file.txt
+```
+
+### Directory Management
+
+Manage your backup directories:
+
+```bash
+# List all directories
+koneksi-backup dir list
+
+# Create a new directory
+koneksi-backup dir create "my-backups" -d "Description here"
+
+# Remove a directory (with confirmation)
+koneksi-backup dir remove <directory-id>
+
+# Force remove without confirmation
+koneksi-backup dir remove <directory-id> -f
 ```
 
 ## Monitoring and Reports
@@ -395,3 +476,22 @@ koneksi-backup run --log-level debug
 - All file transfers are encrypted in transit
 - Checksums ensure data integrity
 - Sensitive files can be excluded via patterns
+- Authentication logic is separated in `internal/auth` package for better security isolation
+
+## Project Structure
+
+```
+koneksi-backup-cli/
+├── cmd/koneksi-backup/     # CLI entry point
+│   └── main.go
+├── internal/               # Internal packages
+│   ├── api/               # API client for backup operations
+│   ├── auth/              # Authentication client (register, login, verify, API keys)
+│   ├── backup/            # Backup and restore logic
+│   ├── config/            # Configuration management
+│   ├── monitor/           # File system monitoring
+│   └── report/            # Backup reporting
+├── pkg/                   # Reusable packages
+│   ├── archive/           # Archive compression/decompression
+│   └── database/          # SQLite database for tracking
+└── Makefile              # Build automation
