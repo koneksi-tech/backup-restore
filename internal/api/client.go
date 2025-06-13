@@ -61,6 +61,15 @@ type DirectoryResponse struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type DirectoryInfo struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	FileCount   int       `json:"file_count"`
+	TotalSize   int64     `json:"total_size"`
+}
+
 func NewClient(baseURL, clientID, clientSecret, directoryID string, timeout time.Duration, retryCount int, logger *zap.Logger) *Client {
 	return &Client{
 		BaseURL:      baseURL,
@@ -299,6 +308,59 @@ func (c *Client) CreateDirectory(ctx context.Context, name, description string) 
 		Description: apiResp.Data.Description,
 		CreatedAt:   createdAt,
 	}, nil
+}
+
+func (c *Client) ListDirectories(ctx context.Context) ([]DirectoryInfo, error) {
+	endpoint := "/api/clients/v1/directories"
+
+	resp, err := c.doRequest(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.parseError(resp)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Parse the response
+	var apiResp struct {
+		Data []struct {
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			CreatedAt   string `json:"created_at"`
+			FileCount   int    `json:"file_count"`
+			TotalSize   int64  `json:"total_size"`
+		} `json:"data"`
+		Message string `json:"message"`
+		Status  string `json:"status"`
+	}
+
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Convert to DirectoryInfo
+	directories := make([]DirectoryInfo, 0, len(apiResp.Data))
+	for _, dir := range apiResp.Data {
+		createdAt, _ := time.Parse(time.RFC3339, dir.CreatedAt)
+		directories = append(directories, DirectoryInfo{
+			ID:          dir.ID,
+			Name:        dir.Name,
+			Description: dir.Description,
+			CreatedAt:   createdAt,
+			FileCount:   dir.FileCount,
+			TotalSize:   dir.TotalSize,
+		})
+	}
+
+	return directories, nil
 }
 
 func (c *Client) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, error) {
