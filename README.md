@@ -10,11 +10,13 @@ A powerful command-line tool for automated directory backup with real-time chang
 - **Concurrent Backups**: Efficiently backs up multiple files in parallel
 - **Smart Detection**: Only backs up files that have actually changed (using checksums)
 - **Compression Support**: Optional gzip/zlib compression to save storage space
+- **Encryption Support**: AES-256-GCM encryption for secure backups with password protection
 - **Large File Support**: Handle files up to 2GB with automatic compression recommendations
 - **Database Tracking**: SQLite database tracks all backup history and metadata
 - **Comprehensive Reporting**: Generates detailed JSON reports for each backup session
 - **Full Restore Capability**: Restore backed up files from manifest files
 - **Auto-extraction**: Automatically extract tar.gz archives after restore
+- **Auto-decryption**: Automatically decrypt encrypted files after restore
 - **Configurable**: Flexible configuration for directories, exclusions, and performance
 
 ## Installation
@@ -128,6 +130,29 @@ koneksi-backup backup ./my-project --compress-dir
 # Backup completed successfully
 ```
 
+### Encryption
+
+Encrypt files before backup for enhanced security:
+
+```bash
+# Backup with encryption
+koneksi-backup backup ./sensitive-data --encrypt --encrypt-password "MySecretPass123"
+
+# Backup directory with both compression and encryption
+koneksi-backup backup ./my-project --compress-dir --encrypt --encrypt-password "MySecretPass123"
+
+# Using environment variable for password
+export KONEKSI_BACKUP_ENCRYPTION_PASSWORD="MySecretPass123"
+koneksi-backup backup ./sensitive-data --encrypt
+
+# Example output:
+# Starting backup of: ./sensitive-data
+# Encryption is enabled for this backup
+# Encrypting file before backup...
+# File encrypted (size: 1234567 bytes)
+# Backup completed successfully
+```
+
 ### Restore Operations
 
 ```bash
@@ -139,6 +164,16 @@ koneksi-backup restore restore-manifest.json /path/to/restore/directory
 
 # Restore with automatic extraction of tar.gz archives
 koneksi-backup restore restore-manifest.json /path/to/restore --auto-extract
+
+# Restore with automatic decryption
+koneksi-backup restore restore-manifest.json /path/to/restore --decrypt --decrypt-password "MySecretPass123"
+
+# Restore with both decryption and extraction
+koneksi-backup restore restore-manifest.json /path/to/restore --decrypt --auto-extract --decrypt-password "MySecretPass123"
+
+# Using environment variable for decryption password
+export KONEKSI_BACKUP_ENCRYPTION_PASSWORD="MySecretPass123"
+koneksi-backup restore restore-manifest.json /path/to/restore --decrypt
 
 # Restore a single file by ID
 koneksi-backup restore-file <file-id> /path/to/restored/file.txt
@@ -212,6 +247,9 @@ backup:
     enabled: false  # Enable to compress files before backup
     level: 6       # Compression level (1-9, where 9 is highest)
     format: "gzip" # Compression format (gzip or zlib)
+  encryption:
+    enabled: false  # Enable to encrypt files before backup
+    password: ""    # Encryption password (can also use KONEKSI_BACKUP_ENCRYPTION_PASSWORD env var)
 
 report:
   directory: "./reports"
@@ -494,25 +532,12 @@ koneksi-backup run --log-level debug
 ## Security
 
 - API credentials are stored locally in the config file
-- All file transfers are encrypted in transit
+- All file transfers are encrypted in transit using HTTPS
+- Optional AES-256-GCM encryption for files at rest before upload
+- Password-based encryption using PBKDF2 key derivation
 - Checksums ensure data integrity
 - Sensitive files can be excluded via patterns
 - Authentication logic is separated in `internal/auth` package for better security isolation
 
-## Project Structure
-
-```
-koneksi-backup-cli/
-├── cmd/koneksi-backup/     # CLI entry point
-│   └── main.go
-├── internal/               # Internal packages
-│   ├── api/               # API client for backup operations
-│   ├── auth/              # Authentication client (register, login, verify, API keys)
-│   ├── backup/            # Backup and restore logic
-│   ├── config/            # Configuration management
-│   ├── monitor/           # File system monitoring
-│   └── report/            # Backup reporting
-├── pkg/                   # Reusable packages
-│   ├── archive/           # Archive compression/decompression
-│   └── database/          # SQLite database for tracking
-└── Makefile              # Build automation
+## Author
+This project is maintained by the Koneksi Tech team. Contributions are welcome!
