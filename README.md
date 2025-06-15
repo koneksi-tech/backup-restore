@@ -377,6 +377,27 @@ koneksi-backup auth create-key "My Backup Key" -t <access-token>
 koneksi-backup auth revoke-key <client-id> -t <access-token>
 ```
 
+### Multi-Factor Authentication (MFA)
+
+Enhance your account security with MFA support:
+
+```bash
+# Setup MFA - generates QR code and secret
+koneksi-backup auth mfa setup -t <access-token>
+
+# Enable MFA with OTP from your authenticator app
+koneksi-backup auth mfa enable "123456" -t <access-token>
+
+# Login with MFA (two-step process)
+# Step 1: Initial login returns a login code
+koneksi-backup auth login -e john@example.com -p password
+# Step 2: Complete login with login code and OTP
+koneksi-backup auth login-mfa <login-code> <otp-code>
+
+# Disable MFA
+koneksi-backup auth mfa disable -p "YourPassword" -t <access-token>
+```
+
 ### Using API Credentials
 
 Once you have your API credentials, configure them:

@@ -66,6 +66,29 @@ type RevokeKeyRequest struct {
 	ClientID string `json:"client_id"`
 }
 
+// MFASetupResponse represents MFA setup response
+type MFASetupResponse struct {
+	Secret string `json:"secret"`
+	QRCode string `json:"qr_code"`
+	URL    string `json:"url"`
+}
+
+// MFAEnableRequest represents MFA enable request
+type MFAEnableRequest struct {
+	OTP string `json:"otp"`
+}
+
+// MFALoginRequest represents step two of MFA login
+type MFALoginRequest struct {
+	LoginCode string `json:"login_code"`
+	OTP       string `json:"otp"`
+}
+
+// MFADisableRequest represents MFA disable request
+type MFADisableRequest struct {
+	Password string `json:"password"`
+}
+
 // Register creates a new user account
 func (c *Client) Register(req RegisterRequest) error {
 	// Remove nil values for optional fields
@@ -129,10 +152,20 @@ func (c *Client) Login(req LoginRequest) error {
 		return err
 	}
 
-	fmt.Println("Login successful!")
-
-	// Extract and display tokens
+	// Check if MFA is required
 	if data, ok := resp["data"].(map[string]interface{}); ok {
+		// Check for MFA login code
+		if loginCode, ok := data["login_code"].(string); ok {
+			fmt.Println("MFA is enabled for this account.")
+			fmt.Printf("\nLogin Code: %s\n", loginCode)
+			fmt.Println("\nComplete login with your authenticator OTP:")
+			fmt.Printf("  koneksi-backup auth login-mfa %s <otp-code>\n", loginCode)
+			return nil
+		}
+
+		// Normal login success
+		fmt.Println("Login successful!")
+		
 		if accessToken, ok := data["access_token"].(string); ok {
 			fmt.Printf("\nAccess Token:\n%s\n", accessToken)
 			fmt.Println("\nUse this token to create/revoke API keys:")
@@ -168,7 +201,7 @@ func (c *Client) Verify(req VerifyRequest, authToken string) error {
 	}
 
 	fmt.Println("Account verified successfully!")
-	
+
 	if data, ok := resp["data"].(map[string]interface{}); ok {
 		if email, ok := data["email"].(string); ok {
 			fmt.Printf("Email: %s\n", email)
@@ -197,9 +230,10 @@ func (c *Client) CreateKey(req CreateKeyRequest, authToken string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal request data: %w", err)
 	}
-
+	fmt.Println(string(authToken))
 	resp, err := c.doRequest("POST", "/api/service-accounts/generate", jsonData, authToken)
 	if err != nil {
+		fmt.Println("Failed to create API key:")
 		return err
 	}
 
@@ -286,4 +320,121 @@ func (c *Client) doRequest(method, endpoint string, body []byte, authToken strin
 	}
 
 	return result, nil
+}
+
+// SetupMFA initiates MFA setup and returns QR code and secret
+func (c *Client) SetupMFA(authToken string) error {
+	if authToken == "" {
+		authToken = os.Getenv(EnvAuthToken)
+		if authToken == "" {
+			return fmt.Errorf("authentication token required. Use -t flag or set %s environment variable", EnvAuthToken)
+		}
+	}
+
+	resp, err := c.doRequest("POST", "/api/settings/mfa/generate-otp", nil, authToken)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("MFA setup initiated successfully!")
+	
+	if data, ok := resp["data"].(map[string]interface{}); ok {
+		if secret, ok := data["secret"].(string); ok {
+			fmt.Printf("\nSecret Key: %s\n", secret)
+			fmt.Println("Add this secret to your authenticator app (Google Authenticator, Authy, etc.)")
+		}
+		if qrCode, ok := data["qr_code"].(string); ok {
+			fmt.Printf("\nQR Code URL: %s\n", qrCode)
+			fmt.Println("Or scan this QR code with your authenticator app")
+		}
+		if url, ok := data["url"].(string); ok {
+			fmt.Printf("\nManual Entry URL: %s\n", url)
+		}
+	}
+
+	fmt.Println("\nAfter adding to your authenticator app, enable MFA with:")
+	fmt.Println("  koneksi-auth mfa enable <otp-code> -t <access-token>")
+
+	return nil
+}
+
+// EnableMFA enables MFA using the OTP from authenticator app
+func (c *Client) EnableMFA(req MFAEnableRequest, authToken string) error {
+	if authToken == "" {
+		authToken = os.Getenv(EnvAuthToken)
+		if authToken == "" {
+			return fmt.Errorf("authentication token required. Use -t flag or set %s environment variable", EnvAuthToken)
+		}
+	}
+
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request data: %w", err)
+	}
+
+	_, err = c.doRequest("POST", "/api/settings/mfa/enable", jsonData, authToken)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("MFA enabled successfully!")
+	fmt.Println("\nIMPORTANT: Save your recovery codes in a safe place.")
+	fmt.Println("You will now need to provide an OTP code when logging in.")
+
+	return nil
+}
+
+// LoginWithMFA performs the second step of MFA login
+func (c *Client) LoginWithMFA(req MFALoginRequest) error {
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request data: %w", err)
+	}
+
+	resp, err := c.doRequest("POST", "/api/tokens/verify-otp", jsonData, "")
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("MFA login successful!")
+
+	// Extract and display tokens
+	if data, ok := resp["data"].(map[string]interface{}); ok {
+		if accessToken, ok := data["access_token"].(string); ok {
+			fmt.Printf("\nAccess Token:\n%s\n", accessToken)
+			fmt.Println("\nUse this token to create/revoke API keys:")
+			fmt.Printf("  koneksi-auth create-key \"My API Key\" -t \"%s\"\n", accessToken)
+		}
+
+		if refreshToken, ok := data["refresh_token"].(string); ok {
+			fmt.Printf("\nRefresh Token (save for later use):\n%s\n", refreshToken)
+		}
+	}
+
+	return nil
+}
+
+// DisableMFA disables MFA for the account
+func (c *Client) DisableMFA(req MFADisableRequest, authToken string) error {
+	if authToken == "" {
+		authToken = os.Getenv(EnvAuthToken)
+		if authToken == "" {
+			return fmt.Errorf("authentication token required. Use -t flag or set %s environment variable", EnvAuthToken)
+		}
+	}
+
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request data: %w", err)
+	}
+
+	_, err = c.doRequest("POST", "/api/settings/mfa/disable", jsonData, authToken)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("MFA disabled successfully!")
+	fmt.Println("Your account no longer requires OTP codes for login.")
+
+	return nil
 }
