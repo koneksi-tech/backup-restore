@@ -170,6 +170,43 @@ var authVerifyCmd = &cobra.Command{
 	RunE:  authVerify,
 }
 
+// MFA commands
+var mfaCmd = &cobra.Command{
+	Use:   "mfa",
+	Short: "Manage Multi-Factor Authentication",
+	Long:  `Setup, enable, disable Multi-Factor Authentication for your account.`,
+}
+
+var mfaSetupCmd = &cobra.Command{
+	Use:   "setup",
+	Short: "Setup MFA for your account",
+	Long:  `Generate QR code and secret key to setup MFA with your authenticator app.`,
+	RunE:  mfaSetup,
+}
+
+var mfaEnableCmd = &cobra.Command{
+	Use:   "enable [otp-code]",
+	Short: "Enable MFA using OTP code",
+	Long:  `Enable MFA by providing the OTP code from your authenticator app.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  mfaEnable,
+}
+
+var mfaDisableCmd = &cobra.Command{
+	Use:   "disable",
+	Short: "Disable MFA for your account",
+	Long:  `Disable MFA by providing your account password.`,
+	RunE:  mfaDisable,
+}
+
+var loginMfaCmd = &cobra.Command{
+	Use:   "login-mfa [login-code] [otp-code]",
+	Short: "Complete MFA login",
+	Long:  `Complete the login process with MFA by providing the login code and OTP.`,
+	Args:  cobra.ExactArgs(2),
+	RunE:  loginMfa,
+}
+
 var (
 	// Registration flags
 	firstName  string
@@ -228,12 +265,26 @@ func init() {
 	authVerifyCmd.Flags().StringVarP(&authToken, "token", "t", "", "Bearer token from login (required)")
 	authVerifyCmd.MarkFlagRequired("token")
 
+	// MFA flags
+	mfaSetupCmd.Flags().StringVarP(&authToken, "token", "t", "", "Bearer token from login")
+	mfaEnableCmd.Flags().StringVarP(&authToken, "token", "t", "", "Bearer token from login")
+	mfaDisableCmd.Flags().StringVarP(&authToken, "token", "t", "", "Bearer token from login")
+	mfaDisableCmd.Flags().StringVarP(&password, "password", "p", "", "Account password (required)")
+	mfaDisableCmd.MarkFlagRequired("password")
+
+	// Add MFA subcommands
+	mfaCmd.AddCommand(mfaSetupCmd)
+	mfaCmd.AddCommand(mfaEnableCmd)
+	mfaCmd.AddCommand(mfaDisableCmd)
+
 	// Add auth subcommands
 	authCmd.AddCommand(authRegisterCmd)
 	authCmd.AddCommand(authLoginCmd)
 	authCmd.AddCommand(authCreateKeyCmd)
 	authCmd.AddCommand(authRevokeKeyCmd)
 	authCmd.AddCommand(authVerifyCmd)
+	authCmd.AddCommand(mfaCmd)
+	authCmd.AddCommand(loginMfaCmd)
 
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(backupCmd)
@@ -1291,4 +1342,41 @@ func authVerify(cmd *cobra.Command, args []string) error {
 	}
 
 	return authClient.Verify(req, authToken)
+}
+
+// MFA implementation functions
+func mfaSetup(cmd *cobra.Command, args []string) error {
+	authClient := auth.NewClient(authBaseURL)
+	return authClient.SetupMFA(authToken)
+}
+
+func mfaEnable(cmd *cobra.Command, args []string) error {
+	authClient := auth.NewClient(authBaseURL)
+	
+	req := auth.MFAEnableRequest{
+		OTP: args[0],
+	}
+
+	return authClient.EnableMFA(req, authToken)
+}
+
+func mfaDisable(cmd *cobra.Command, args []string) error {
+	authClient := auth.NewClient(authBaseURL)
+	
+	req := auth.MFADisableRequest{
+		Password: password,
+	}
+
+	return authClient.DisableMFA(req, authToken)
+}
+
+func loginMfa(cmd *cobra.Command, args []string) error {
+	authClient := auth.NewClient(authBaseURL)
+	
+	req := auth.MFALoginRequest{
+		LoginCode: args[0],
+		OTP:       args[1],
+	}
+
+	return authClient.LoginWithMFA(req)
 }
