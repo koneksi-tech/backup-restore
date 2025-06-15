@@ -22,6 +22,7 @@ import (
 	"github.com/koneksi/backup-cli/internal/report"
 	"github.com/koneksi/backup-cli/pkg/archive"
 	"github.com/koneksi/backup-cli/pkg/database"
+	"github.com/koneksi/backup-cli/pkg/encryption"
 )
 
 var (
@@ -44,8 +45,11 @@ var runCmd = &cobra.Command{
 }
 
 var (
-	compressDir bool
-	autoExtract bool
+	compressDir       bool
+	autoExtract       bool
+	encryptFiles      bool
+	encryptPassword   string
+	decryptFiles      bool
 )
 
 var backupCmd = &cobra.Command{
@@ -230,9 +234,13 @@ func init() {
 
 	// Add flags for backup command
 	backupCmd.Flags().BoolVar(&compressDir, "compress-dir", false, "compress directory into a single tar.gz file before backup")
+	backupCmd.Flags().BoolVar(&encryptFiles, "encrypt", false, "encrypt files before backup")
+	backupCmd.Flags().StringVar(&encryptPassword, "encrypt-password", "", "password for encryption (required if --encrypt is set)")
 
 	// Add flags for restore command
 	restoreCmd.Flags().BoolVar(&autoExtract, "auto-extract", false, "automatically extract tar.gz files after restore")
+	restoreCmd.Flags().BoolVar(&decryptFiles, "decrypt", false, "decrypt files after restore")
+	restoreCmd.Flags().StringVar(&encryptPassword, "decrypt-password", "", "password for decryption (required if --decrypt is set)")
 
 	// Add flags for directory commands
 	dirCreateCmd.Flags().StringVarP(&dirDescription, "description", "d", "", "Directory description")
@@ -635,8 +643,34 @@ func performBackup(cmd *cobra.Command, args []string) error {
 	ctx = context.Background()
 	backupService.Start(ctx)
 
+	// Override encryption settings from flags if provided
+	if encryptFiles {
+		cfg.Backup.Encryption.Enabled = true
+		if encryptPassword != "" {
+			cfg.Backup.Encryption.Password = encryptPassword
+		} else if cfg.Backup.Encryption.Password == "" {
+			// Check environment variable
+			cfg.Backup.Encryption.Password = os.Getenv("KONEKSI_BACKUP_ENCRYPTION_PASSWORD")
+			if cfg.Backup.Encryption.Password == "" {
+				return fmt.Errorf("encryption password required when --encrypt is set. Use --encrypt-password or set KONEKSI_BACKUP_ENCRYPTION_PASSWORD")
+			}
+		}
+	}
+
 	// Perform backup
 	fmt.Printf("Starting backup of: %s\n", targetPath)
+	if encryptFiles {
+		fmt.Println("Encryption is enabled for this backup")
+	}
+
+	var fileToBackup string = targetPath
+	var cleanupFiles []string
+	defer func() {
+		// Clean up temporary files
+		for _, f := range cleanupFiles {
+			os.Remove(f)
+		}
+	}()
 
 	if info.IsDir() && compressDir {
 		// Compress directory and backup as single file
@@ -645,7 +679,8 @@ func performBackup(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to compress directory: %w", err)
 		}
-		defer os.Remove(archivePath) // Clean up temp file
+		cleanupFiles = append(cleanupFiles, archivePath)
+		fileToBackup = archivePath
 
 		// Get archive info
 		archiveInfo, err := os.Stat(archivePath)
@@ -654,15 +689,42 @@ func performBackup(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Printf("Directory compressed to %s (size: %d bytes)\n", archivePath, archiveInfo.Size())
+		info = archiveInfo
+	}
 
-		// Backup the archive as a single file
-		err = backupSingleFile(ctx, backupService, archivePath, archiveInfo)
-	} else if info.IsDir() {
-		// Backup directory normally
-		err = backupDirectory(ctx, backupService, targetPath, cfg.Backup.ExcludePatterns)
+	// Handle encryption if enabled
+	if encryptFiles && !info.IsDir() {
+		fmt.Println("Encrypting file before backup...")
+		encryptor := encryption.NewEncryptor(cfg.Backup.Encryption.Password)
+		encryptedPath := fileToBackup + ".enc"
+		
+		if err := encryptor.EncryptFile(fileToBackup, encryptedPath); err != nil {
+			return fmt.Errorf("failed to encrypt file: %w", err)
+		}
+		cleanupFiles = append(cleanupFiles, encryptedPath)
+		
+		// Update file info
+		encInfo, err := os.Stat(encryptedPath)
+		if err != nil {
+			return fmt.Errorf("failed to stat encrypted file: %w", err)
+		}
+		
+		fmt.Printf("File encrypted (size: %d bytes)\n", encInfo.Size())
+		fileToBackup = encryptedPath
+		info = encInfo
+	}
+
+	// Perform the actual backup
+	if info.IsDir() {
+		// Backup directory normally (with optional encryption per file)
+		encryptionConfig := struct{ Enabled bool; Password string }{
+			Enabled:  cfg.Backup.Encryption.Enabled,
+			Password: cfg.Backup.Encryption.Password,
+		}
+		err = backupDirectory(ctx, backupService, targetPath, cfg.Backup.ExcludePatterns, encryptionConfig)
 	} else {
-		// Backup single file
-		err = backupSingleFile(ctx, backupService, targetPath, info)
+		// Backup single file (already compressed/encrypted if requested)
+		err = backupSingleFile(ctx, backupService, fileToBackup, info)
 	}
 
 	if err != nil {
@@ -703,7 +765,7 @@ func backupSingleFile(ctx context.Context, service *backup.Service, filePath str
 	return nil
 }
 
-func backupDirectory(ctx context.Context, service *backup.Service, dirPath string, excludePatterns []string) error {
+func backupDirectory(ctx context.Context, service *backup.Service, dirPath string, excludePatterns []string, encryptionConfig struct{ Enabled bool; Password string }) error {
 	fileCount := 0
 
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
@@ -856,6 +918,9 @@ backup:
     enabled: false  # Enable compression for backups
     level: 6       # Compression level (1-9)
     format: "gzip" # Compression format (gzip or zlib)
+  encryption:
+    enabled: false  # Enable encryption for backups
+    password: ""    # Encryption password (can also use KONEKSI_BACKUP_ENCRYPTION_PASSWORD env var)
 
 report:
   directory: "./reports"
@@ -943,6 +1008,53 @@ func restoreBackup(cmd *cobra.Command, args []string) error {
 	fmt.Printf("- Restored: %d\n", progress.RestoredFiles)
 	fmt.Printf("- Failed: %d\n", progress.FailedFiles)
 	fmt.Printf("- Duration: %s\n", time.Since(progress.StartTime))
+
+	// Handle decryption if needed
+	if decryptFiles {
+		decryptPassword := encryptPassword
+		if decryptPassword == "" {
+			decryptPassword = os.Getenv("KONEKSI_BACKUP_ENCRYPTION_PASSWORD")
+			if decryptPassword == "" {
+				return fmt.Errorf("decryption password required when --decrypt is set. Use --decrypt-password or set KONEKSI_BACKUP_ENCRYPTION_PASSWORD")
+			}
+		}
+
+		fmt.Println("\nChecking for encrypted files to decrypt...")
+		encryptor := encryption.NewEncryptor(decryptPassword)
+		decryptCount := 0
+
+		err := filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil // Skip errors
+			}
+
+			if !info.IsDir() && filepath.Ext(path) == ".enc" {
+				fmt.Printf("Decrypting %s...\n", path)
+				
+				// Decrypt file
+				decryptedPath := encryption.GetDecryptedFileName(path)
+				if err := encryptor.DecryptFile(path, decryptedPath); err != nil {
+					fmt.Printf("Failed to decrypt %s: %v\n", path, err)
+				} else {
+					decryptCount++
+					// Remove encrypted file after successful decryption
+					os.Remove(path)
+					fmt.Printf("Decrypted and removed %s\n", path)
+				}
+			}
+			return nil
+		})
+
+		if err != nil {
+			fmt.Printf("Warning: error during decryption walk: %v\n", err)
+		}
+
+		if decryptCount > 0 {
+			fmt.Printf("\nDecrypted %d file(s)\n", decryptCount)
+		} else {
+			fmt.Println("No encrypted files found to decrypt")
+		}
+	}
 
 	// Auto-extract tar.gz files if flag is set
 	if autoExtract {

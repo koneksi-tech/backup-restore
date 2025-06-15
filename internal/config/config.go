@@ -29,6 +29,10 @@ type Config struct {
 			Level   int    `mapstructure:"level"`
 			Format  string `mapstructure:"format"`
 		} `mapstructure:"compression"`
+		Encryption struct {
+			Enabled  bool   `mapstructure:"enabled"`
+			Password string `mapstructure:"password"`
+		} `mapstructure:"encryption"`
 	} `mapstructure:"backup"`
 
 	Report struct {
@@ -78,6 +82,8 @@ func Load(configPath string) (*Config, error) {
 	viper.SetDefault("backup.compression.enabled", false)
 	viper.SetDefault("backup.compression.level", 6) // 1-9, 6 is default gzip
 	viper.SetDefault("backup.compression.format", "gzip")
+	viper.SetDefault("backup.encryption.enabled", false)
+	viper.SetDefault("backup.encryption.password", "")
 	viper.SetDefault("report.directory", "./reports")
 	viper.SetDefault("report.format", "json")
 	viper.SetDefault("report.retention", 30)
