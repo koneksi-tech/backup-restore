@@ -188,7 +188,7 @@ The configuration file (`~/.koneksi-backup/config.yaml`) supports the following 
 
 ```yaml
 api:
-  base_url: "https://koneksi-tyk-gateway-3rvca.ondigitalocean.app"
+  base_url: "https://staging.koneksi.co.kr"
   client_id: "your-client-id"
   client_secret: "your-client-secret"
   directory_id: "your-directory-id"
