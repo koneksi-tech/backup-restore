@@ -70,7 +70,6 @@ type FileManifestEntry struct {
 	Checksum     string      `json:"checksum"`
 	BackupTime   time.Time   `json:"backup_time"`
 	Permissions  os.FileMode `json:"permissions"`
-	Compressed   bool        `json:"compressed"`
 }
 
 func NewRestoreService(client *api.Client, logger *zap.Logger, concurrent int) *RestoreService {
