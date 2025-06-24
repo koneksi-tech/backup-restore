@@ -64,11 +64,11 @@ type BackupReport struct {
 }
 
 type FileManifestEntry struct {
-	FilePath     string    `json:"file_path"`
-	FileID       string    `json:"file_id"`
-	Size         int64     `json:"size"`
-	Checksum     string    `json:"checksum"`
-	BackupTime   time.Time `json:"backup_time"`
+	FilePath     string      `json:"file_path"`
+	FileID       string      `json:"file_id"`
+	Size         int64       `json:"size"`
+	Checksum     string      `json:"checksum"`
+	BackupTime   time.Time   `json:"backup_time"`
 	Permissions  os.FileMode `json:"permissions"`
 }
 
@@ -225,8 +225,11 @@ func (r *RestoreService) restoreWorker(ctx context.Context, queue chan FileManif
 }
 
 func (r *RestoreService) restoreFile(ctx context.Context, entry FileManifestEntry, targetDir string) {
+	// Sanitize the file path from the manifest to use only the base name
+	cleanPath := filepath.Base(entry.FilePath)
+
 	// Calculate target path
-	targetPath := filepath.Join(targetDir, entry.FilePath)
+	targetPath := filepath.Join(targetDir, cleanPath)
 
 	// Check if file already exists and matches checksum
 	if r.fileExists(targetPath, entry.Checksum) {
@@ -304,11 +307,7 @@ func (r *RestoreService) fileExists(path, checksum string) bool {
 	}
 
 	// Calculate checksum of existing file
-	existingChecksum, err := r.calculateFileChecksum(path)
-	if err != nil {
-		return false
-	}
-
+	existingChecksum, _ := r.calculateFileChecksum(path)
 	return existingChecksum == checksum
 }
 
